@@ -1,126 +1,145 @@
 import 'package:demo_with_getx_and_100ms/controllers/PreviewController.dart';
 import 'package:flutter/material.dart';
-import 'package:hmssdk_flutter/hmssdk_flutter.dart';
 import 'package:get/get.dart';
 
-import 'RoomWidget.dart';
-
 class PreviewWidget extends StatelessWidget {
-  final String meetingUrl;
-  final String userName;
-
-  late PreviewController previewController;
-
-  PreviewWidget(this.meetingUrl, this.userName, {Key? key}) : super(key: key) {
-    previewController = Get.put(PreviewController(meetingUrl, userName));
-  }
+  const PreviewWidget({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    var size = MediaQuery.of(context).size;
-    final double itemHeight = size.height;
-    final double itemWidth = size.width;
-
     return Scaffold(
       body: Column(
         children: [
           Expanded(
-            child: GetX<PreviewController>(builder: (controller) {
-              return Container(
-                child: controller.localTracks.isNotEmpty
-                    ? SizedBox(
-                        height: itemHeight,
-                        width: itemWidth,
-                        child: Stack(
-                          children: [
-                            (!controller.isLocalVideoOn.value ||
-                                    controller.localTracks.isEmpty)
-                                ? const Center(
-                                    child: CircleAvatar(
-                                        backgroundColor: Colors.green,
-                                        radius: 36,
-                                        child: Text(
-                                          "T",
-                                          style: TextStyle(
-                                              fontSize: 36,
-                                              color: Colors.white),
-                                        )),
-                                  )
-                                : HMSVideoView(
-                                    scaleType: ScaleType.SCALE_ASPECT_FILL,
-                                    track: controller.localTracks[0],
-                                    matchParent: false),
-                            Positioned(
-                              bottom: 20.0,
-                              left: itemWidth / 2 - 50.0,
-                              child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.blue,
-                                    padding: const EdgeInsets.all(14)),
-                                onPressed: () {
-                                  controller.removePreviewListener();
-                                  Get.off(
-                                      () => RoomWidget(meetingUrl, userName));
-                                },
-                                child: const Text(
-                                  "Join Now",
-                                  style: TextStyle(
-                                      height: 1,
-                                      fontSize: 18,
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold),
+            child: GetBuilder<PreviewController>(
+              init: PreviewController(),
+              builder: (controller) => SizedBox(
+                width: MediaQuery.of(context).size.width,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 20, vertical: 14)),
+                      onPressed: () async {
+                        final TextEditingController textEditingController =
+                            TextEditingController();
+                        final String? inviteCode = await Get.dialog(
+                          AlertDialog(
+                            backgroundColor: Get.theme.primaryColor,
+                            title: const Text('创建房间'),
+                            content: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                TextField(
+                                  controller: textEditingController,
+                                  keyboardType: TextInputType.number,
+                                  decoration: const InputDecoration(
+                                    hintText: '请输入邀请码',
+                                    border: OutlineInputBorder(),
+                                  ),
                                 ),
+                              ],
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Get.back(),
+                                child: const Text('取消'),
                               ),
-                            ),
-                            Positioned(
-                              bottom: 20.0,
-                              right: 50.0,
-                              child: GetX<PreviewController>(
-                                  builder: (controller) {
-                                return IconButton(
-                                    onPressed: () {
-                                      controller.toggleMicMuteState();
-                                    },
-                                    icon: Icon(
-                                      controller.isLocalAudioOn.value
-                                          ? Icons.mic
-                                          : Icons.mic_off,
-                                      size: 30.0,
-                                      color: Colors.blue,
+                              TextButton(
+                                onPressed: () {
+                                  if (textEditingController.text.isEmpty) {
+                                    Get.showSnackbar(const GetSnackBar(
+                                      message: "请填写邀请码",
                                     ));
-                              }),
-                            ),
-                            Positioned(
-                              bottom: 20.0,
-                              left: 50.0,
-                              child: GetX<PreviewController>(
-                                  builder: (controller) {
-                                return IconButton(
-                                    onPressed: () {
-                                      controller.toggleCameraMuteState();
-                                    },
-                                    icon: Icon(
-                                      controller.isLocalVideoOn.value
-                                          ? Icons.videocam
-                                          : Icons.videocam_off,
-                                      size: 30.0,
-                                      color: Colors.blueAccent,
-                                    ));
-                              }),
-                            ),
-                          ],
-                        ),
-                      )
-                    : SizedBox(
-                        height: itemHeight / 1.3,
-                        child: const Center(
-                          child: CircularProgressIndicator(
-                            strokeWidth: 1,
+                                    return;
+                                  }
+                                  Get.back(result: textEditingController.text);
+                                },
+                                child: const Text('确定'),
+                              ),
+                            ],
                           ),
-                        ),
+                        );
+                        if (inviteCode != null) {
+                          controller.createRoom(inviteCode);
+                        }
+                      },
+                      child: const Text(
+                        "创建会议",
+                        style: TextStyle(
+                            height: 1,
+                            fontSize: 18,
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold),
                       ),
-              );
-            }),
+                    ),
+                    const SizedBox(height: 20),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 20, vertical: 14)),
+                      onPressed: () async {
+                        final TextEditingController textEditingController =
+                            TextEditingController();
+                        final String? roomId = await Get.dialog(
+                          AlertDialog(
+                            backgroundColor: Get.theme.primaryColor,
+                            title: const Text('加入房间'),
+                            content: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                TextField(
+                                  controller: textEditingController,
+                                  keyboardType: TextInputType.number,
+                                  decoration: const InputDecoration(
+                                    hintText: '请输入房间号',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Get.back(),
+                                child: const Text('取消'),
+                              ),
+                              TextButton(
+                                onPressed: () {
+                                  if (textEditingController.text.isEmpty) {
+                                    Get.showSnackbar(const GetSnackBar(
+                                      message: "请填写房间号",
+                                    ));
+                                    return;
+                                  }
+                                  Get.back(result: textEditingController.text);
+                                },
+                                child: const Text('确定'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (roomId != null) {
+                          controller.joinRoom(roomId);
+                        }
+                      },
+                      child: const Text(
+                        "加入会议",
+                        style: TextStyle(
+                            height: 1,
+                            fontSize: 18,
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
         ],
       ),

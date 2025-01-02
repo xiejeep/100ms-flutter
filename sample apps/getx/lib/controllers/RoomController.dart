@@ -1,57 +1,71 @@
+import 'dart:io';
+
 import 'package:demo_with_getx_and_100ms/models/PeerTrackNode.dart';
-import 'package:demo_with_getx_and_100ms/views/HomePage.dart';
+import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:hmssdk_flutter/hmssdk_flutter.dart';
 
+import '../api.dart';
+
 class RoomController extends GetxController
     implements HMSUpdateListener, HMSActionResultListener {
-  RxList<Rx<PeerTrackNode>> peerTrackList = <Rx<PeerTrackNode>>[].obs;
-  RxBool isLocalVideoOn = true.obs;
+  // RxBool isLocalVideoOn = true.obs;
   RxBool isLocalAudioOn = true.obs;
   RxBool isScreenShareActive = false.obs;
-  String url;
-  String name;
+  String url = Get.arguments['meetingUrl'] ?? '';
+  String name = Get.arguments['userName'] ?? '';
+  bool isMaster = Get.arguments['isMaster'] ?? false;
 
-  RoomController(this.url, this.name);
+  HMSSDK hmsSdk = Get.find<HMSSDK>();
 
-  HMSSDK hmsSdk = Get.find();
+  final showBottomBar = true.obs;
 
+  Rx<PeerTrackNode?> screenShareTrack = Rx<PeerTrackNode?>(null);
+  Rx<int> networkQuality = 0.obs;
+  Rx<int> networkQualityOfLocal = 0.obs;
   @override
   void onInit() async {
-    hmsSdk.addUpdateListener(listener: this);
+    super.onInit();
+
     var token = await hmsSdk.getAuthTokenByRoomCode(roomCode: url);
+    if (token == null) return;
+    if (token is HMSException) {
+      print("错误");
+      return;
+    }
+    hmsSdk.addUpdateListener(listener: this);
 
     if (token == null) return;
-
     HMSConfig config = HMSConfig(
       authToken: token,
       userName: name,
+      captureNetworkQualityInPreview: true,
     );
-
     hmsSdk.join(config: config);
-
-    super.onInit();
+    EasyLoading.show(
+        status: "加载中...",
+        dismissOnTap: false,
+        maskType: EasyLoadingMaskType.clear);
+    Future.delayed(const Duration(seconds: 20), () {
+      if (EasyLoading.isShow) {
+        EasyLoading.dismiss();
+      }
+    });
   }
+
+  // @override
+  // void dispose() {
+  //   hmsSdk.removeUpdateListener(listener: this);
+  //   hmsSdk.destroy();
+  //   super.dispose();
+  // }
 
   @override
   void onJoin({required HMSRoom room}) {
-    peerTrackList.clear();
-
-    room.peers?.forEach((peer) {
-      if (peer.isLocal) {
-        isLocalAudioOn.value = !(peer.audioTrack?.isMute ?? true);
-        isLocalVideoOn.value = !(peer.videoTrack?.isMute ?? true);
-        peerTrackList.add(PeerTrackNode(
-                peer.peerId +
-                    ((peer.videoTrack?.source == "REGULAR")
-                        ? "mainVideo"
-                        : (peer.videoTrack?.trackId ?? "")),
-                peer.videoTrack,
-                peer.videoTrack?.isMute ?? false,
-                peer)
-            .obs);
-      }
-    });
+    EasyLoading.dismiss();
+    if (!isMaster) {
+      toggleScreenShare();
+    }
   }
 
   @override
@@ -63,41 +77,17 @@ class RoomController extends GetxController
       if (track.kind == HMSTrackKind.kHMSTrackKindAudio) {
         isLocalAudioOn.value = !track.isMute;
         isLocalAudioOn.refresh();
-      } else if (track.kind == HMSTrackKind.kHMSTrackKindVideo &&
-          track.source == "REGULAR") {
-        isLocalVideoOn.value == !track.isMute;
-        isLocalVideoOn.refresh();
       }
+      return;
     }
 
-    if (track.kind == HMSTrackKind.kHMSTrackKindVideo) {
+    if (track.kind == HMSTrackKind.kHMSTrackKindVideo &&
+        track.source != "REGULAR") {
       if (trackUpdate == HMSTrackUpdate.trackRemoved) {
-        peerTrackList.removeWhere((element) =>
-            peer.peerId +
-                ((track.source == "REGULAR") ? "mainVideo" : track.trackId) ==
-            element.value.uid);
+        screenShareTrack.value = null;
       } else {
-        bool isRegular = (track.source == "REGULAR");
-        int index = peerTrackList.indexWhere((element) =>
-            element.value.peer.peerId +
-                (isRegular
-                    ? "mainVideo"
-                    : (element.value.hmsVideoTrack?.trackId ?? "empty")) ==
-            peer.peerId + (isRegular ? "mainVideo" : track.trackId));
-        if (index != -1) {
-          peerTrackList[index](PeerTrackNode(
-              peer.peerId + (isRegular ? "mainVideo" : track.trackId),
-              track as HMSVideoTrack,
-              track.isMute,
-              peer));
-        } else {
-          peerTrackList.add(PeerTrackNode(
-                  peer.peerId + (isRegular ? "mainVideo" : track.trackId),
-                  track as HMSVideoTrack,
-                  track.isMute,
-                  peer)
-              .obs);
-        }
+        screenShareTrack.value = PeerTrackNode(
+            peer.peerId + track.trackId, track as HMSVideoTrack, true, peer);
       }
     }
   }
@@ -105,21 +95,28 @@ class RoomController extends GetxController
   @override
   void onHMSError({required HMSException error}) {
     // To know more about handling errors please checkout the docs here: https://www.100ms.live/docs/flutter/v2/how--to-guides/debugging/error-handling
-    Get.snackbar("Error", error.message ?? "");
+    // Get.snackbar("Error", error.message ?? "");
   }
 
   void leaveMeeting() async {
-    hmsSdk.leave(hmsActionResultListener: this);
+    try {
+      EasyLoading.show(status: "退出中...");
+      await exitRoom(name, isMaster ? 1 : 2);
+      if (isScreenShareActive.value && Platform.isIOS) {
+        hmsSdk.stopScreenShare(hmsActionResultListener: this);
+      }
+      hmsSdk.leave(hmsActionResultListener: this);
+      Get.back();
+    } catch (e) {
+      Get.snackbar("错误", e.toString());
+    } finally {
+      EasyLoading.dismiss();
+    }
   }
 
   void toggleMicMuteState() async {
     await hmsSdk.toggleMicMuteState();
     isLocalAudioOn.toggle();
-  }
-
-  void toggleCameraMuteState() async {
-    await hmsSdk.toggleCameraMuteState();
-    isLocalVideoOn.toggle();
   }
 
   void toggleScreenShare() {
@@ -137,14 +134,14 @@ class RoomController extends GetxController
       required HMSException hmsException}) {
     switch (methodType) {
       case HMSActionResultListenerMethod.leave:
-        Get.snackbar("Leave Error", hmsException.message ?? "");
+        Get.snackbar("离开房间失败", hmsException.message ?? "");
         break;
       case HMSActionResultListenerMethod.startScreenShare:
-        Get.snackbar("startScreenShare Error", hmsException.message ?? "");
+        Get.snackbar("开始共享失败", hmsException.message ?? "");
 
         break;
       case HMSActionResultListenerMethod.stopScreenShare:
-        Get.snackbar("stopScreenShare Error", hmsException.message ?? "");
+        Get.snackbar("停止共享失败", hmsException.message ?? "");
 
         break;
       case HMSActionResultListenerMethod.changeTrackState:
@@ -235,7 +232,7 @@ class RoomController extends GetxController
         // TODO: Handle this case.
         break;
     }
-    Get.snackbar("Error", hmsException.message ?? "");
+    Get.snackbar("错误", hmsException.message ?? "");
   }
 
   @override
@@ -245,9 +242,8 @@ class RoomController extends GetxController
     switch (methodType) {
       case HMSActionResultListenerMethod.leave:
         hmsSdk.removeUpdateListener(listener: this);
-        hmsSdk.destroy();
+        // hmsSdk.destroy();
         Get.back();
-        Get.off(() => const HomePage());
         break;
       case HMSActionResultListenerMethod.startScreenShare:
         isScreenShareActive.toggle();
@@ -359,6 +355,16 @@ class RoomController extends GetxController
 
   @override
   void onPeerUpdate({required HMSPeer peer, required HMSPeerUpdate update}) {
+    if (update == HMSPeerUpdate.networkQualityUpdated) {
+      if (peer.isLocal) {
+        networkQualityOfLocal.value = peer.networkQuality?.quality ?? 0;
+      } else {
+        networkQuality.value = peer.networkQuality?.quality ?? 0;
+      }
+      print(
+          "Network Quality of ${peer.name} in Room  ${peer.networkQuality?.quality}");
+    }
+
     // Checkout the docs for peer updates here: https://www.100ms.live/docs/flutter/v2/how--to-guides/listen-to-room-updates/update-listeners
   }
 
