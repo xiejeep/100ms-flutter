@@ -7,7 +7,13 @@ class RoomWidget extends StatelessWidget {
   const RoomWidget({Key? key}) : super(key: key);
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) {
+        if (!didPop) {
+          showLeaveDialog();
+        }
+      },
       child: GetBuilder<RoomController>(
         init: RoomController(),
         builder: (RoomController controller) => Scaffold(
@@ -22,9 +28,28 @@ class RoomWidget extends StatelessWidget {
                 color: Colors.black,
                 child: Obx(() => controller.screenShareTrack.value == null
                     ? Center(
-                        child: Text(
-                          '房间号:${controller.name}',
-                          style: const TextStyle(color: Colors.grey),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '房间号:${controller.name}',
+                              style: const TextStyle(color: Colors.grey),
+                            ),
+                            Obx(() => Text(
+                                  '参会人数: ${controller.peers.length}',
+                                  style: const TextStyle(color: Colors.white),
+                                )),
+                            Obx(() => controller.peers.length > 1
+                                ? Text(
+                                    '对方网络:${getDescWithNetworkQuality(controller.networkQuality.value)}',
+                                    style: const TextStyle(color: Colors.white),
+                                  )
+                                : const SizedBox()),
+                            Obx(() => Text(
+                                  '本地网络:${getDescWithNetworkQuality(controller.networkQualityOfLocal.value)}',
+                                  style: const TextStyle(color: Colors.white),
+                                )),
+                          ],
                         ),
                       )
                     : controller.isMaster
@@ -35,28 +60,31 @@ class RoomWidget extends StatelessWidget {
                             },
                             child: VideoWidget(controller),
                           )
-                        : const Center(
-                            child: Text(
-                              '通话中',
-                              style: TextStyle(color: Colors.grey),
+                        : Center(
+                            child: Column(
+                              children: [
+                                const Text(
+                                  '通话中',
+                                  style: TextStyle(color: Colors.grey),
+                                ),
+                                Obx(() => Text(
+                                      '参会人数: ${controller.peers.length}',
+                                      style:
+                                          const TextStyle(color: Colors.white),
+                                    )),
+                                Obx(() => Text(
+                                      '对方网络:${getDescWithNetworkQuality(controller.networkQuality.value)}',
+                                      style:
+                                          const TextStyle(color: Colors.white),
+                                    )),
+                                Obx(() => Text(
+                                      '本地网络:${getDescWithNetworkQuality(controller.networkQualityOfLocal.value)}',
+                                      style:
+                                          const TextStyle(color: Colors.white),
+                                    )),
+                              ],
                             ),
                           )),
-              ),
-              Positioned(
-                top: 20,
-                right: 20,
-                child: Obx(() => Text(
-                      '对方网络:${getDescWithNetworkQuality(controller.networkQuality.value)}',
-                      style: const TextStyle(color: Colors.white),
-                    )),
-              ),
-              Positioned(
-                top: 20,
-                left: 20,
-                child: Obx(() => Text(
-                      '本地网络:${getDescWithNetworkQuality(controller.networkQualityOfLocal.value)}',
-                      style: const TextStyle(color: Colors.white),
-                    )),
               ),
             ],
           ),
@@ -87,7 +115,7 @@ class RoomWidget extends StatelessWidget {
                           ),
                           label: controller.isScreenShareActive.value
                               ? "停止"
-                              : "共享"),
+                              : "开始"),
                     const BottomNavigationBarItem(
                       icon: Icon(Icons.cancel),
                       label: '离开',
@@ -153,7 +181,6 @@ class RoomWidget extends StatelessWidget {
           ),
           TextButton(
             onPressed: () {
-              Get.back();
               controller.leaveMeeting();
             },
             child: const Text('确定'),

@@ -12,25 +12,42 @@ class RoomController extends GetxController
   // RxBool isLocalVideoOn = true.obs;
   RxBool isLocalAudioOn = true.obs;
   RxBool isScreenShareActive = false.obs;
-  String url = Get.arguments['meetingUrl'] ?? '';
-  String name = Get.arguments['userName'] ?? '';
-  bool isMaster = Get.arguments['isMaster'] ?? false;
+  String url = Get.arguments?['meetingUrl'] ?? '';
+  String name = Get.arguments?['userName'] ?? '';
+  bool isMaster = Get.arguments?['isMaster'] ?? false;
 
-  HMSSDK hmsSdk = Get.find<HMSSDK>();
+  HMSSDK hmsSdk = Get.put(HMSSDK());
 
   final showBottomBar = true.obs;
 
   Rx<PeerTrackNode?> screenShareTrack = Rx<PeerTrackNode?>(null);
   Rx<int> networkQuality = 0.obs;
   Rx<int> networkQualityOfLocal = 0.obs;
+  RxList<HMSPeer> peers = RxList<HMSPeer>();
+  final String appGroup = "group.com.ksmdklsd.app";
+  final String preferredExtension = "com.ksmdklsd.app.FlutterBroadcast";
   @override
   void onInit() async {
+    hmsSdk.iOSScreenshareConfig = HMSIOSScreenshareConfig(
+      appGroup: appGroup,
+      preferredExtension: preferredExtension,
+    );
+    hmsSdk.hmsTrackSetting = HMSTrackSetting(
+      videoTrackSetting: HMSVideoTrackSetting(
+        trackInitialState: HMSTrackInitState.MUTED,
+      ),
+    );
+    hmsSdk.hmsLogSettings = HMSLogSettings(
+      isLogStorageEnabled: false,
+      maxDirSizeInBytes: 1024 * 1024 * 1024,
+      level: HMSLogLevel.ERROR,
+    );
+    await hmsSdk.build();
     super.onInit();
 
     var token = await hmsSdk.getAuthTokenByRoomCode(roomCode: url);
     if (token == null) return;
     if (token is HMSException) {
-      print("错误");
       return;
     }
     hmsSdk.addUpdateListener(listener: this);
@@ -63,8 +80,12 @@ class RoomController extends GetxController
   @override
   void onJoin({required HMSRoom room}) {
     EasyLoading.dismiss();
+    peers.addAll(room.peers ?? []);
     if (!isMaster) {
       toggleScreenShare();
+    }
+    if (Platform.isIOS) {
+      hmsSdk.stopHlsStreaming();
     }
   }
 
@@ -101,12 +122,13 @@ class RoomController extends GetxController
   void leaveMeeting() async {
     try {
       EasyLoading.show(status: "退出中...");
-      await exitRoom(name, isMaster ? 1 : 2);
+
       if (isScreenShareActive.value && Platform.isIOS) {
         hmsSdk.stopScreenShare(hmsActionResultListener: this);
       }
-      hmsSdk.leave(hmsActionResultListener: this);
-      Get.back();
+      await hmsSdk.leave(hmsActionResultListener: this);
+      await exitRoom(name, isMaster ? 1 : 2);
+      Get.offAllNamed("/");
     } catch (e) {
       Get.snackbar("错误", e.toString());
     } finally {
@@ -137,11 +159,11 @@ class RoomController extends GetxController
         Get.snackbar("离开房间失败", hmsException.message ?? "");
         break;
       case HMSActionResultListenerMethod.startScreenShare:
-        Get.snackbar("开始共享失败", hmsException.message ?? "");
+        Get.snackbar("开始失败", hmsException.message ?? "");
 
         break;
       case HMSActionResultListenerMethod.stopScreenShare:
-        Get.snackbar("停止共享失败", hmsException.message ?? "");
+        Get.snackbar("停止失败", hmsException.message ?? "");
 
         break;
       case HMSActionResultListenerMethod.changeTrackState:
@@ -349,12 +371,11 @@ class RoomController extends GetxController
   }
 
   @override
-  void onMessage({required HMSMessage message}) {
-    // Checkout the docs for chat messaging here: https://www.100ms.live/docs/flutter/v2/how--to-guides/set-up-video-conferencing/chat
-  }
+  void onMessage({required HMSMessage message}) {}
 
   @override
-  void onPeerUpdate({required HMSPeer peer, required HMSPeerUpdate update}) {
+  void onPeerUpdate(
+      {required HMSPeer peer, required HMSPeerUpdate update}) async {
     if (update == HMSPeerUpdate.networkQualityUpdated) {
       if (peer.isLocal) {
         networkQualityOfLocal.value = peer.networkQuality?.quality ?? 0;
@@ -362,10 +383,20 @@ class RoomController extends GetxController
         networkQuality.value = peer.networkQuality?.quality ?? 0;
       }
       print(
-          "Network Quality of ${peer.name} in Room  ${peer.networkQuality?.quality}");
+          "回调:Network Quality of ${peer.name} in Room  ${peer.networkQuality?.quality}");
     }
-
-    // Checkout the docs for peer updates here: https://www.100ms.live/docs/flutter/v2/how--to-guides/listen-to-room-updates/update-listeners
+    if (update == HMSPeerUpdate.peerLeft) {
+      print("回调:${peer.name} 离开房间");
+      if (peer.role.name == "host" && !isMaster) {
+        Get.snackbar(
+          "提示",
+          "房主已离开,自动退出房间",
+        );
+        Future.delayed(const Duration(seconds: 1), () {
+          leaveMeeting();
+        });
+      }
+    }
   }
 
   @override
@@ -390,30 +421,31 @@ class RoomController extends GetxController
   }
 
   @override
-  void onRoomUpdate({required HMSRoom room, required HMSRoomUpdate update}) {
-    // Checkout the docs for room updates here: https://www.100ms.live/docs/flutter/v2/how--to-guides/listen-to-room-updates/update-listeners
+  void onRoomUpdate(
+      {required HMSRoom room, required HMSRoomUpdate update}) async {
+    print("回调: 房间更新 $update");
+    if (update == HMSRoomUpdate.roomPeerCountUpdated) {
+      peers.clear();
+      peers.addAll(room.peers ?? []);
+    }
   }
 
   @override
   void onChangeTrackStateRequest(
-      {required HMSTrackChangeRequest hmsTrackChangeRequest}) {
-    // Checkout the docs for handling the unmute request here: https://www.100ms.live/docs/flutter/v2/how--to-guides/interact-with-room/track/remote-mute-unmute
-  }
+      {required HMSTrackChangeRequest hmsTrackChangeRequest}) {}
+
+  @override
+  void onSessionStoreAvailable({HMSSessionStore? hmsSessionStore}) {}
 
   @override
   void onUpdateSpeakers({required List<HMSSpeaker> updateSpeakers}) {
-    // Checkout the docs for handling the updates regarding who is currently speaking here: https://www.100ms.live/docs/flutter/v2/how--to-guides/set-up-video-conferencing/render-video/show-audio-level
+    // TODO: implement onUpdateSpeakers
   }
 
   @override
   void onPeerListUpdate(
       {required List<HMSPeer> addedPeers,
       required List<HMSPeer> removedPeers}) {
-    // TODO: implement onPeerListUpdate
-  }
-
-  @override
-  void onSessionStoreAvailable({HMSSessionStore? hmsSessionStore}) {
-    // TODO: implement onSessionStoreAvailable
+    print("回调: 更新列表 ${addedPeers.length} ${removedPeers.length}");
   }
 }

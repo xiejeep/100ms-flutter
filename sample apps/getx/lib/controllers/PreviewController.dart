@@ -1,30 +1,16 @@
+import 'dart:async';
 import 'dart:io';
-
+import 'package:demo_with_getx_and_100ms/controllers/GlobalService.dart';
 import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get_storage/get_storage.dart';
-import 'package:hmssdk_flutter/hmssdk_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:get/get.dart';
 
 import '../api.dart';
 
 class PreviewController extends GetxController {
-  final String appGroup = "group.com.ksmdklsd.app";
-  final String preferredExtension = "com.ksmdklsd.app.FlutterBroadcast";
-  HMSSDK hmsSdk = Get.put(HMSSDK());
-
   @override
   void onInit() async {
-    hmsSdk.iOSScreenshareConfig = HMSIOSScreenshareConfig(
-      appGroup: appGroup,
-      preferredExtension: preferredExtension,
-    );
-    hmsSdk.hmsTrackSetting = HMSTrackSetting(
-      videoTrackSetting: HMSVideoTrackSetting(
-        trackInitialState: HMSTrackInitState.MUTED,
-      ),
-    );
-    await hmsSdk.build();
     super.onInit();
   }
 
@@ -34,19 +20,21 @@ class PreviewController extends GetxController {
       late Map<String, dynamic> response;
       //检查是否有缓存
       final appInfo = GetStorage().read('appInfo');
-      final bool useCache = appInfo != null && appInfo['id'] == inviteCode;
-
+      final bool useCache = appInfo != null;
+      final code = GlobalService.service.getServiceSecret();
       if (useCache) {
         // 使用缓存数据请求
         response = await requestRoomInfo(
-            inviteCode: appInfo['id'],
+            inviteCode: inviteCode,
             num: appInfo['num'],
-            token: appInfo['token']);
+            token: appInfo['token'],
+            code: code);
       } else {
         // 不使用缓存数据请求
-        response = await requestRoomInfo(inviteCode: inviteCode);
+        response = await requestRoomInfo(inviteCode: inviteCode, code: code);
       }
-      GetStorage().write('appInfo', response);
+      await GetStorage().write('appInfo', response);
+      GetStorage().save();
 
       final token = response['key'];
       if (token == null) {
@@ -55,7 +43,7 @@ class PreviewController extends GetxController {
       }
 
       final displayName = response['roomid'] ?? "Guest";
-      jumpToPage(displayName, token, true);
+      jumpToPage(displayName.toString(), token, true);
     } catch (e) {
       Get.snackbar("错误", e.toString());
     } finally {
@@ -64,10 +52,11 @@ class PreviewController extends GetxController {
   }
 
   joinRoom(String roomId) async {
+    final code = GlobalService.service.getServiceSecret();
     EasyLoading.show(status: '加载中...');
     try {
-      final response = await requestJoinRoom(roomId);
-
+      final response = await requestJoinRoom(roomId, code);
+      GetStorage().write('roomId', roomId);
       final token = response['key'];
       if (token == null) {
         Get.snackbar("错误", "加入会议失败:key为空");
@@ -75,7 +64,7 @@ class PreviewController extends GetxController {
       }
 
       final displayName = response['roomid'] ?? "Guest";
-      jumpToPage(displayName, token, false);
+      jumpToPage(displayName.toString(), token, false);
     } catch (e) {
       Get.snackbar("错误", e.toString());
     } finally {
@@ -92,10 +81,6 @@ class PreviewController extends GetxController {
       'isMaster': isMaster
     });
   }
-
-  // void leaveMeeting() async {
-  //   hmsSdk.leave(hmsActionResultListener: this);
-  // }
 
   Future<bool> getPermissions() async {
     if (Platform.isIOS) return true;

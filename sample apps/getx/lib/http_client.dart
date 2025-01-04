@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:get_storage/get_storage.dart';
 
 class HttpClient {
   static Dio? _dio;
@@ -7,8 +8,10 @@ class HttpClient {
   static Dio getInstance() {
     if (_dio == null) {
       _dio = Dio();
+      final baseUrl =
+          GetStorage().read('BASE_URL') ?? dotenv.env['BASE_URL'] ?? '';
 
-      _dio!.options.baseUrl = dotenv.env['BASE_URL'] ?? '';
+      _dio!.options.baseUrl = baseUrl;
 
       // 添加拦截器
       _dio!.interceptors.add(InterceptorsWrapper(
