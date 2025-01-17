@@ -1,4 +1,4 @@
-package com.example.demo_with_getx_and_100ms
+package com.ksmdklsd.app
 
 import android.app.Activity
 import android.content.Intent

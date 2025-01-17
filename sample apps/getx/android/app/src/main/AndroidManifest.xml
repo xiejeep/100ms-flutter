@@ -1,5 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.example.demo_with_getx_and_100ms">
+    package="com.ksmdklsd.app">
 
 
     <uses-feature android:name="android.hardware.camera" />

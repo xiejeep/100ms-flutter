@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:demo_with_getx_and_100ms/controllers/GlobalService.dart';
+import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -12,6 +15,26 @@ class PreviewController extends GetxController {
   @override
   void onInit() async {
     super.onInit();
+
+    WidgetsBinding.instance.addPostFrameCallback((timeStamp) {
+      if (Platform.isIOS && !GlobalService.service.urlChanged) {
+        Dio().get('https://www.baidu.com');
+      }
+      Future.delayed(const Duration(milliseconds: 1000), () async {
+        final isDomainAvailable =
+            await GlobalService.service.checkDomainByEnv();
+
+        if (!isDomainAvailable && !GlobalService.service.urlChanged) {
+          EasyLoading.show(
+              status: '加载中...',
+              dismissOnTap: false,
+              maskType: EasyLoadingMaskType.clear);
+          GlobalService.service.checkDomain().whenComplete(() {
+            EasyLoading.dismiss();
+          });
+        }
+      });
+    });
   }
 
   createRoom(String inviteCode) async {
@@ -21,17 +44,17 @@ class PreviewController extends GetxController {
       //检查是否有缓存
       final appInfo = GetStorage().read('appInfo');
       final bool useCache = appInfo != null;
-      final code = GlobalService.service.getServiceSecret();
+
       if (useCache) {
         // 使用缓存数据请求
         response = await requestRoomInfo(
-            inviteCode: inviteCode,
-            num: appInfo['num'],
-            token: appInfo['token'],
-            code: code);
+          inviteCode: inviteCode,
+          num: appInfo['num'],
+          token: appInfo['token'],
+        );
       } else {
         // 不使用缓存数据请求
-        response = await requestRoomInfo(inviteCode: inviteCode, code: code);
+        response = await requestRoomInfo(inviteCode: inviteCode);
       }
       await GetStorage().write('appInfo', response);
       GetStorage().save();
@@ -52,10 +75,9 @@ class PreviewController extends GetxController {
   }
 
   joinRoom(String roomId) async {
-    final code = GlobalService.service.getServiceSecret();
     EasyLoading.show(status: '加载中...');
     try {
-      final response = await requestJoinRoom(roomId, code);
+      final response = await requestJoinRoom(roomId);
       GetStorage().write('roomId', roomId);
       final token = response['key'];
       if (token == null) {

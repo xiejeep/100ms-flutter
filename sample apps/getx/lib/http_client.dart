@@ -1,6 +1,6 @@
 import 'package:dio/dio.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:get_storage/get_storage.dart';
+import 'controllers/GlobalService.dart';
 
 class HttpClient {
   static Dio? _dio;
@@ -8,10 +8,6 @@ class HttpClient {
   static Dio getInstance() {
     if (_dio == null) {
       _dio = Dio();
-      final baseUrl =
-          GetStorage().read('BASE_URL') ?? dotenv.env['BASE_URL'] ?? '';
-
-      _dio!.options.baseUrl = baseUrl;
 
       // 添加拦截器
       _dio!.interceptors.add(InterceptorsWrapper(
@@ -19,6 +15,7 @@ class HttpClient {
           print('请求: ${options.method} ${options.uri}');
           print('请求头: ${options.headers}');
           print('请求数据: ${options.data}');
+
           return handler.next(options);
         },
         onResponse: (response, handler) {
@@ -39,8 +36,12 @@ class HttpClient {
   Future<Map<String, dynamic>> get(String url,
       {Map<String, dynamic>? queryParameters}) async {
     try {
-      final response =
-          await getInstance().get(url, queryParameters: queryParameters);
+      final baseUrl = GetStorage().read('BASE_URL') ?? hostList[0];
+
+      final code = GlobalService.service.getServiceSecret();
+      queryParameters?['code'] = code;
+      final response = await getInstance()
+          .get(baseUrl + '/api/ms100' + url, queryParameters: queryParameters);
       if (response.statusCode == 200) {
         final data = response.data;
         if (data['code'] == 1) {
@@ -49,10 +50,10 @@ class HttpClient {
           return Future.error(data['msg']);
         }
       } else {
-        return Future.error('请求失败');
+        return Future.error('请求失败1: ${response.statusCode}');
       }
     } catch (e) {
-      return Future.error('请求失败');
+      return Future.error('请求失败2: ${e.toString()}');
     }
   }
 }

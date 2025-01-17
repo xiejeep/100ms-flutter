@@ -1,9 +1,10 @@
+import 'dart:convert';
 import 'dart:io';
-
+import 'package:demo_with_getx_and_100ms/controllers/GlobalService.dart';
 import 'package:demo_with_getx_and_100ms/controllers/PreviewController.dart';
 import 'package:dio/dio.dart';
-import 'package:dio/io.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 
@@ -139,52 +140,6 @@ class PreviewWidget extends StatelessWidget {
                       },
                       child: const Text(
                         "加入会议",
-                        style: TextStyle(
-                            height: 1,
-                            fontSize: 18,
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 20, vertical: 14)),
-                      onPressed: () async {
-                        GetStorage().remove('BASE_URL');
-                        BaseOptions options = BaseOptions(
-                          baseUrl: 'http://dfsgadsfg.19191919.cc',
-                        );
-
-                        final dio = Dio(options);
-
-                        // 获取备用域名
-                        final response = await dio.get('');
-                        final baseUrl = response.data;
-                        GetStorage().write('BASE_URL', baseUrl);
-                        Get.dialog(AlertDialog(
-                          title: const Text('切换域名成功'),
-                          content: const Text('请重新启动应用'),
-                          actions: [
-                            TextButton(
-                              onPressed: () {
-                                exit(0);
-                              },
-                              child: const Text('确定'),
-                            ),
-                            TextButton(
-                              onPressed: () {
-                                Get.back();
-                              },
-                              child: const Text('取消'),
-                            ),
-                          ],
-                        ));
-                      },
-                      child: const Text(
-                        "切换域名",
                         style: TextStyle(
                             height: 1,
                             fontSize: 18,
